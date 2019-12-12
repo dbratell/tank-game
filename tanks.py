@@ -39,7 +39,7 @@ def rotate_square_surface(surface, rotation):
 class Tank:
     def __init__(self, team):
         self.team = team
-        self.pos = (100, 100)  # Center of the tank
+        self.pos = (100, 390)  # Center of the tank
         self.hull_rotation = -15
         self.turret_rotation = 30
         self.speed = 30  # 20 pixels per second
@@ -69,7 +69,7 @@ class Tank:
                          TEAM_COLORS[self.team],
                          hull_rect_with_room_for_external_border,
                          HULL_LINE_WIDTH)
-                         
+
         turret_image_size = (GUN_SIZE[0] * 2, GUN_SIZE[0] * 2)
         turret = pygame.Surface(turret_image_size,
                                 pygame.SRCALPHA)
@@ -80,7 +80,7 @@ class Tank:
                              (turret_image_size[0] / 2 - TURRET_SIZE[0] / 2,
                               turret_image_size[1] / 2 - TURRET_SIZE[1] / 2),
                              TURRET_SIZE))
-                             
+
         # Gun
         pygame.draw.rect(turret,
                          TEAM_COLORS[self.team],
@@ -100,21 +100,55 @@ class Tank:
             rotated_tank,
             (self.pos[0] - tank_image_size[0] / 2,
              self.pos[1] - tank_image_size[1] / 2))
-        
-    def ai(self):
-        self.turret_rotation = (self.turret_rotation + 1) % 360
-        self.hull_rotation = (self.hull_rotation - 0.3) % 360
 
-        speed_x = math.cos(self.hull_rotation / 360 * 2 * math.pi) * self.speed
-        speed_y = -math.sin(self.hull_rotation / 360 * 2 * math.pi) * self.speed
+    def update_positions(self):
+        cos_angle = math.cos(self.hull_rotation / 360 * 2 * math.pi)
+        sin_angle = math.sin(self.hull_rotation / 360 * 2 * math.pi)
+        speed_x = cos_angle * self.speed
+        speed_y = -sin_angle * self.speed
 
         self.pos = (self.pos[0] + speed_x / FPS,
                     self.pos[1] + speed_y / FPS)
 
-#        self.pos = (min(max(0, self.pos[0] + speed_x / FPS), GAME_SIZE[0]),
-#                    min(max(0, self.pos[1] + speed_y / FPS), GAME_SIZE[1]))
+        def rotate_point(point):
+            rotated_x = point[0] * cos_angle - point[1] * sin_angle
+            rotated_y = -(point[0] * sin_angle + point[1] * cos_angle)
 
-        
+            if abs(point[0] ** 2 + point[1] ** 2 -
+                   rotated_x ** 2 - rotated_y ** 2) >= 0.001:
+                print("Angle", self.hull_rotation)
+                print("In", point[0] ** 2 + point[1] ** 2)
+                print("Out", rotated_x ** 2 + rotated_y ** 2)
+                print(point)
+                print(rotated_x, rotated_y)
+                print(cos_angle, sin_angle)
+                assert False
+            return (rotated_x, rotated_y)
+
+        # rotate_point((0, 1))
+        # rotate_point((0, -1))
+        # rotate_point((1, 0))
+        # rotate_point((-1, 0))
+
+        # Check that no hull corners ended up outside the game area.
+        for corner in ((-TANK_SIZE[0] / 2, -TANK_SIZE[1] / 2),
+                       (TANK_SIZE[0] / 2, -TANK_SIZE[1] / 2),
+                       (-TANK_SIZE[0] / 2, TANK_SIZE[1] / 2),
+                       (TANK_SIZE[0] / 2, TANK_SIZE[1] / 2)):
+            rotated_corner = rotate_point(corner)
+            if self.pos[0] + rotated_corner[0] < 0:
+                self.pos = (-rotated_corner[0], self.pos[1])
+            if self.pos[0] + rotated_corner[0] > GAME_SIZE[0]:
+                self.pos = (GAME_SIZE[0] - rotated_corner[0], self.pos[1])
+            if self.pos[1] + rotated_corner[1] < 0:
+                self.pos = (self.pos[0], -rotated_corner[1])
+            if self.pos[1] + rotated_corner[1] > GAME_SIZE[1]:
+                self.pos = (self.pos[0], GAME_SIZE[1] - rotated_corner[1])
+
+    def ai(self):
+        self.turret_rotation = (self.turret_rotation + 1) % 360
+        self.hull_rotation = (self.hull_rotation - 0.3) % 360
+
 class Game:
     def __init__(self, screen):
         self.screen = screen
@@ -152,7 +186,7 @@ class Game:
             self.draw()
             pygame.display.update()
             self.clock.tick(FPS)
-        
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode(GAME_SIZE)
@@ -160,7 +194,7 @@ def main():
 
     game = Game(screen)
     game.mainloop()
-    
-        
+
+
 if __name__ == "__main__":
     main()
