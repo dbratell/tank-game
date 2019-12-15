@@ -59,11 +59,12 @@ class Block(pygame.sprite.Sprite):
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, position, rotation):
         pygame.sprite.Sprite.__init__(self)
-        self.rect = pygame.Rect(position, BULLET_SIZE)
-#        self.position_and_size = position_and_size
+        self.position = position
+        self.rect = pygame.Rect(self.position, BULLET_SIZE)
         self.image = pygame.Surface(self.rect.size)
         self.image.fill(BULLET_COLOR)
-        self.rotation = rotation  # degrees, 0 is straight to the right
+        self.rotation = rotation  # degrees, 0 is straight to the
+                                  # right, counter-clockwise
 
     def update_position(self):
         cos_angle = math.cos(self.rotation / 360 * 2 * math.pi)
@@ -71,12 +72,11 @@ class Bullet(pygame.sprite.Sprite):
         speed_x = cos_angle * BULLET_SPEED
         speed_y = -sin_angle * BULLET_SPEED
 
-        pos = self.rect.topleft
-        new_pos = (pos[0] + speed_x / FPS,
-                   pos[1] + speed_y / FPS)
-        if pygame.Rect((0, 0), GAME_SIZE).collidepoint(new_pos):
-            self.rect = pygame.Rect(new_pos, BULLET_SIZE)
-        else:
+        new_pos = (self.position[0] + speed_x / FPS,
+                   self.position[1] + speed_y / FPS)
+        self.rect = pygame.Rect(new_pos, BULLET_SIZE)
+        self.position = new_pos
+        if not pygame.Rect((0, 0), GAME_SIZE).collidepoint(new_pos):
             self.kill()
 
 
