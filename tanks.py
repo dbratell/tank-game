@@ -204,14 +204,16 @@ class Game:
         a_tank = Tank(TEAM_1)
         self.tanks.append(a_tank)
 
-        a_block = Block(pygame.Rect(300, 140, 30, 50))
-        self.blocks.add(a_block)
-        a_block = Block(pygame.Rect(80, 70, 40, 40))
-        self.blocks.add(a_block)
-        a_block = Block(pygame.Rect(540, 50, 20, 80))
-        self.blocks.add(a_block)
-        a_block = Block(pygame.Rect(200, 300, 100, 30))
-        self.blocks.add(a_block)
+        a_tank = Tank(TEAM_1)
+        self.tanks.append(a_tank)
+
+        for block_rect in (
+                (300, 140, 30, 50),
+                (80, 70, 40, 40),
+                (540, 50, 20, 80),
+                (200, 300, 100, 30),
+        ):
+            self.blocks.add(Block(pygame.Rect(block_rect)))
 
         pygame.time.set_timer(SPAWN_BULLET_EVENT, 1000)
 
@@ -220,15 +222,16 @@ class Game:
 
     def handle_events(self):
         for event in pygame.event.get():
-            print(event)
             if event.type == pygame.QUIT:
+                print(event)
                 self.run = False
             elif event.type == SPAWN_BULLET_EVENT:
                 bullet = Bullet((random.randrange(0, GAME_SIZE[0]),
                                  random.randrange(0, GAME_SIZE[1])),
                                 random.randrange(0, 360))
                 self.bullets.add(bullet)
-                print(len(self.bullets))
+            else:
+                print(event)
 
     def ai(self):
         for tank in self.tanks:
@@ -274,7 +277,6 @@ def main():
 
     game = Game(screen)
     game.mainloop()
-
 
 if __name__ == "__main__":
     main()
