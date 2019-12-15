@@ -81,11 +81,12 @@ class Bullet(pygame.sprite.Sprite):
 
 
 class Tank(pygame.sprite.Sprite):
-    def __init__(self, team):
+    def __init__(self, team, position=(100, 390), rotation=-15):
         pygame.sprite.Sprite.__init__(self)
         self.team = team
-        self.pos = (100, 390)  # Center of the tank
-        self.rotation = -15
+        self.pos = position  # Center of the tank
+        self.rotation = rotation  # degrees, 0 is straight to the
+                                  # right, counter-clockwise
         self.turret_rotation = 30
         self.speed = 30  # 30 pixels per second
 
@@ -204,8 +205,10 @@ class Game:
         a_tank = Tank(TEAM_1)
         self.tanks.append(a_tank)
 
-        a_tank = Tank(TEAM_1)
-        self.tanks.append(a_tank)
+        b_tank = Tank(TEAM_2, (random.randrange(GAME_SIZE[0]),
+                               random.randrange(GAME_SIZE[1])),
+                      random.randrange(360))
+        self.tanks.append(b_tank)
 
         for block_rect in (
                 (300, 140, 30, 50),
