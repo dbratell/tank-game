@@ -18,7 +18,7 @@ GAME_COLOR = (0, 0, 0)
 BLOCK_COLOR = (70, 70, 70)
 TANK_SIZE = (60, 40)
 BULLET_COLOR = (200, 200, 255)
-BULLET_SPEED = 80  # 80 pixels per second
+BULLET_SPEED = 120  # 80 pixels per second
 BULLET_SIZE = (2, 2)
 HULL_LINE_WIDTH = 2
 TURRET_SIZE = (20, 20)
@@ -61,10 +61,15 @@ class Bullet(pygame.sprite.Sprite):
         pygame.sprite.Sprite.__init__(self)
         self.position = position
         self.rect = pygame.Rect(self.position, BULLET_SIZE)
-        self.image = pygame.Surface(self.rect.size)
+        # Without SRCALPHA, mask_from_surface won't do the right thing
+        # when presented with a solid filled area.
+        self.image = pygame.Surface(self.rect.size, pygame.SRCALPHA)
         self.image.fill(BULLET_COLOR)
         self.rotation = rotation  # degrees, 0 is straight to the
                                   # right, counter-clockwise
+
+        # Needed for collision detection
+        self.mask = pygame.mask.from_surface(self.image)
 
     def update_position(self):
         cos_angle = math.cos(self.rotation / 360 * 2 * math.pi)
@@ -76,8 +81,6 @@ class Bullet(pygame.sprite.Sprite):
                    self.position[1] + speed_y / FPS)
         self.rect = pygame.Rect(new_pos, BULLET_SIZE)
         self.position = new_pos
-        if not pygame.Rect((0, 0), GAME_SIZE).collidepoint(new_pos):
-            self.kill()
 
 
 class Tank(pygame.sprite.Sprite):
@@ -150,6 +153,13 @@ class Tank(pygame.sprite.Sprite):
             (self.pos[0] - tank_image_size[0] / 2,
              self.pos[1] - tank_image_size[1] / 2))
 
+        # For collision detection
+        self.rect = pygame.Rect(
+            (self.pos[0] - tank_image_size[0] / 2,
+             self.pos[1] - tank_image_size[1] / 2),
+            rotated_tank.get_size())
+
+        self.mask = pygame.mask.from_surface(rotated_tank)
     def update_position(self):
         cos_angle = math.cos(self.rotation / 360 * 2 * math.pi)
         sin_angle = math.sin(self.rotation / 360 * 2 * math.pi)
@@ -221,7 +231,7 @@ class Game:
         ):
             self.blocks.add(Block(pygame.Rect(block_rect)))
 
-        pygame.time.set_timer(SPAWN_BULLET_EVENT, 1000)
+        pygame.time.set_timer(SPAWN_BULLET_EVENT, 600)
 
         self.run = True
         self.clock = pygame.time.Clock()
@@ -249,6 +259,8 @@ class Game:
 
         for bullet in self.bullets:
             bullet.update_position()
+            if not pygame.Rect((0, 0), GAME_SIZE).colliderect(bullet.rect):
+                bullet.kill()
 
     def draw(self):
         self.screen.fill(GAME_COLOR)
@@ -262,9 +274,17 @@ class Game:
         pygame.sprite.groupcollide(self.blocks,
                                    self.bullets,
                                    False,  # Blocks survive
-                                   True,  # Bullets die
-                                   None)
-                                   
+                                   True)  # Bullets die
+
+        for tank in self.tanks:
+            bullets_hitting = pygame.sprite.spritecollide(
+                tank,
+                self.bullets,
+                True,  # Kill bullets that hit.
+                pygame.sprite.collide_mask)
+            for _ in bullets_hitting:
+                print("Poof")
+
 
     def mainloop(self):
         while self.run:
