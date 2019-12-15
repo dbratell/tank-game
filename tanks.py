@@ -112,6 +112,9 @@ class Tank(pygame.sprite.Sprite):
         ).inflate(-HULL_LINE_WIDTH * 2,
                   -HULL_LINE_WIDTH * 2)
         pygame.draw.rect(tank_image,
+                         darker_color(TEAM_COLORS[self.team]),
+                         hull_rect_with_room_for_external_border)
+        pygame.draw.rect(tank_image,
                          TEAM_COLORS[self.team],
                          hull_rect_with_room_for_external_border,
                          HULL_LINE_WIDTH)
