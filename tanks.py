@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import math
+import random
 
 import pygame
 
@@ -14,11 +15,17 @@ TEAM_COLORS = {
     TEAM_2: (0, 0, 255)
 }
 GAME_COLOR = (0, 0, 0)
+BLOCK_COLOR = (70, 70, 70)
 TANK_SIZE = (60, 40)
+BULLET_COLOR = (200, 200, 255)
+BULLET_SPEED = 80  # 80 pixels per second
+BULLET_SIZE = (2, 2)
 HULL_LINE_WIDTH = 2
 TURRET_SIZE = (20, 20)
 GUN_SIZE = (34, 4)
 FPS = 60
+
+SPAWN_BULLET_EVENT = pygame.USEREVENT + 1
 
 def rotate_square_surface(surface, rotation):
     # Using rotozoom instead of rotate because rotozoom does antialias,
@@ -35,14 +42,52 @@ def rotate_square_surface(surface, rotation):
                                            -rotation_growth))
     return clipped_rotated_surface
 
+class Block(pygame.sprite.Sprite):
+    def __init__(self, position_and_size):
+        pygame.sprite.Sprite.__init__(self)
+#        self.position_and_size = position_and_size
+        self.image = pygame.Surface(position_and_size.size)
+        self.image.fill(BLOCK_COLOR)
+        self.rect = position_and_size
 
-class Tank:
+    # def draw(self, screen):
+    #      pygame.draw.rect(screen,
+    #                       BLOCK_COLOR,
+    #                       pygame.Rect(self.position_and_size))
+
+
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, position, rotation):
+        pygame.sprite.Sprite.__init__(self)
+        self.rect = pygame.Rect(position, BULLET_SIZE)
+#        self.position_and_size = position_and_size
+        self.image = pygame.Surface(self.rect.size)
+        self.image.fill(BULLET_COLOR)
+        self.rotation = rotation  # degrees, 0 is straight to the right
+
+    def update_position(self):
+        cos_angle = math.cos(self.rotation / 360 * 2 * math.pi)
+        sin_angle = math.sin(self.rotation / 360 * 2 * math.pi)
+        speed_x = cos_angle * BULLET_SPEED
+        speed_y = -sin_angle * BULLET_SPEED
+
+        pos = self.rect.topleft
+        new_pos = (pos[0] + speed_x / FPS,
+                   pos[1] + speed_y / FPS)
+        if pygame.Rect((0, 0), GAME_SIZE).collidepoint(new_pos):
+            self.rect = pygame.Rect(new_pos, BULLET_SIZE)
+        else:
+            self.kill()
+
+
+class Tank(pygame.sprite.Sprite):
     def __init__(self, team):
+        pygame.sprite.Sprite.__init__(self)
         self.team = team
         self.pos = (100, 390)  # Center of the tank
-        self.hull_rotation = -15
+        self.rotation = -15
         self.turret_rotation = 30
-        self.speed = 30  # 20 pixels per second
+        self.speed = 30  # 30 pixels per second
 
     def draw(self, screen):
         # # Hull
@@ -95,15 +140,15 @@ class Tank:
             (tank_image_size[0] / 2 - turret_image_size[0] / 2,
              tank_image_size[1] / 2 - turret_image_size[1] / 2))
 
-        rotated_tank = rotate_square_surface(tank_image, self.hull_rotation)
+        rotated_tank = rotate_square_surface(tank_image, self.rotation)
         screen.blit(
             rotated_tank,
             (self.pos[0] - tank_image_size[0] / 2,
              self.pos[1] - tank_image_size[1] / 2))
 
-    def update_positions(self):
-        cos_angle = math.cos(self.hull_rotation / 360 * 2 * math.pi)
-        sin_angle = math.sin(self.hull_rotation / 360 * 2 * math.pi)
+    def update_position(self):
+        cos_angle = math.cos(self.rotation / 360 * 2 * math.pi)
+        sin_angle = math.sin(self.rotation / 360 * 2 * math.pi)
         speed_x = cos_angle * self.speed
         speed_y = -sin_angle * self.speed
 
@@ -116,7 +161,7 @@ class Tank:
 
             if abs(point[0] ** 2 + point[1] ** 2 -
                    rotated_x ** 2 - rotated_y ** 2) >= 0.001:
-                print("Angle", self.hull_rotation)
+                print("Angle", self.rotation)
                 print("In", point[0] ** 2 + point[1] ** 2)
                 print("Out", rotated_x ** 2 + rotated_y ** 2)
                 print(point)
@@ -147,15 +192,29 @@ class Tank:
 
     def ai(self):
         self.turret_rotation = (self.turret_rotation + 1) % 360
-        self.hull_rotation = (self.hull_rotation - 0.3) % 360
+        self.rotation = (self.rotation - 0.3) % 360
 
 class Game:
     def __init__(self, screen):
         self.screen = screen
         self.tanks = []
+        self.blocks = pygame.sprite.Group()
+        self.bullets = pygame.sprite.Group()
 
         a_tank = Tank(TEAM_1)
         self.tanks.append(a_tank)
+
+        a_block = Block(pygame.Rect(300, 140, 30, 50))
+        self.blocks.add(a_block)
+        a_block = Block(pygame.Rect(80, 70, 40, 40))
+        self.blocks.add(a_block)
+        a_block = Block(pygame.Rect(540, 50, 20, 80))
+        self.blocks.add(a_block)
+        a_block = Block(pygame.Rect(200, 300, 100, 30))
+        self.blocks.add(a_block)
+
+        pygame.time.set_timer(SPAWN_BULLET_EVENT, 1000)
+
         self.run = True
         self.clock = pygame.time.Clock()
 
@@ -164,6 +223,12 @@ class Game:
             print(event)
             if event.type == pygame.QUIT:
                 self.run = False
+            elif event.type == SPAWN_BULLET_EVENT:
+                bullet = Bullet((random.randrange(0, GAME_SIZE[0]),
+                                 random.randrange(0, GAME_SIZE[1])),
+                                random.randrange(0, 360))
+                self.bullets.add(bullet)
+                print(len(self.bullets))
 
     def ai(self):
         for tank in self.tanks:
@@ -171,18 +236,33 @@ class Game:
 
     def update_positions(self):
         for tank in self.tanks:
-            tank.update_positions()
+            tank.update_position()
+
+        for bullet in self.bullets:
+            bullet.update_position()
 
     def draw(self):
         self.screen.fill(GAME_COLOR)
+
+        self.blocks.draw(self.screen)
+        self.bullets.draw(self.screen)
         for tank in self.tanks:
             tank.draw(self.screen)
+
+    def handle_collisions(self):
+        pygame.sprite.groupcollide(self.blocks,
+                                   self.bullets,
+                                   False,  # Blocks survive
+                                   True,  # Bullets die
+                                   None)
+                                   
 
     def mainloop(self):
         while self.run:
             self.handle_events()
             self.ai()
             self.update_positions()
+            self.handle_collisions()
             self.draw()
             pygame.display.update()
             self.clock.tick(FPS)
