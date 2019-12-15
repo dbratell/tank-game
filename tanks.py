@@ -27,6 +27,22 @@ FPS = 60
 
 SPAWN_BULLET_EVENT = pygame.USEREVENT + 1
 
+def darker_color(color):
+    return (color[0] // 2, color[1] // 2, color[2] // 2)
+
+def random_position():
+    return (random.randrange(0, GAME_SIZE[0]),
+            random.randrange(0, GAME_SIZE[1]))
+
+def calc_sin_cos(angle):
+    sin_angle = math.sin(angle / 360 * 2 * math.pi)
+    cos_angle = math.cos(angle / 360 * 2 * math.pi)
+    return (sin_angle, cos_angle)
+
+
+def random_angle():
+    return random.randrange(360)
+
 def rotate_square_surface(surface, rotation):
     # Using rotozoom instead of rotate because rotozoom does antialias,
     # rotate doesn't.
@@ -72,8 +88,7 @@ class Bullet(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
 
     def update_position(self):
-        cos_angle = math.cos(self.rotation / 360 * 2 * math.pi)
-        sin_angle = math.sin(self.rotation / 360 * 2 * math.pi)
+        sin_angle, cos_angle = calc_sin_cos(self.rotation)
         speed_x = cos_angle * BULLET_SPEED
         speed_y = -sin_angle * BULLET_SPEED
 
@@ -91,7 +106,18 @@ class Tank(pygame.sprite.Sprite):
         self.rotation = rotation  # degrees, 0 is straight to the
                                   # right, counter-clockwise
         self.turret_rotation = 30
-        self.speed = 30  # 30 pixels per second
+        self.turret_turn_ratio = 60  # 60 degrees per second
+        self.turret_turn_direction = -1  # Clockwise
+
+        self.max_speed = 30  # 30 pixels per second
+        self.throttle_mode = 1  # Full speed ahead
+
+        self.turn_ratio = 18  # 18 degrees per second
+        self.turn_direction = 1  # Counter clockwise
+
+        # Used by collision detection
+        self.mask = pygame.mask.Mask((0, 0))
+        self.rect = pygame.Rect((0, 0), (0, 0))
 
     def draw(self, screen):
         # # Hull
@@ -161,10 +187,9 @@ class Tank(pygame.sprite.Sprite):
 
         self.mask = pygame.mask.from_surface(rotated_tank)
     def update_position(self):
-        cos_angle = math.cos(self.rotation / 360 * 2 * math.pi)
-        sin_angle = math.sin(self.rotation / 360 * 2 * math.pi)
-        speed_x = cos_angle * self.speed
-        speed_y = -sin_angle * self.speed
+        sin_angle, cos_angle = calc_sin_cos(self.rotation)
+        speed_x = cos_angle * self.max_speed * self.throttle_mode
+        speed_y = -sin_angle * self.max_speed * self.throttle_mode
 
         self.pos = (self.pos[0] + speed_x / FPS,
                     self.pos[1] + speed_y / FPS)
@@ -184,11 +209,6 @@ class Tank(pygame.sprite.Sprite):
                 assert False
             return (rotated_x, rotated_y)
 
-        # rotate_point((0, 1))
-        # rotate_point((0, -1))
-        # rotate_point((1, 0))
-        # rotate_point((-1, 0))
-
         # Check that no hull corners ended up outside the game area.
         for corner in ((-TANK_SIZE[0] / 2, -TANK_SIZE[1] / 2),
                        (TANK_SIZE[0] / 2, -TANK_SIZE[1] / 2),
@@ -205,8 +225,25 @@ class Tank(pygame.sprite.Sprite):
                 self.pos = (self.pos[0], GAME_SIZE[1] - rotated_corner[1])
 
     def ai(self):
-        self.turret_rotation = (self.turret_rotation + 1) % 360
-        self.rotation = (self.rotation - 0.3) % 360
+        self.turret_rotation = (
+            self.turret_rotation +
+            self.turret_turn_direction * self.turret_turn_ratio / FPS) % 360
+        self.rotation = (self.rotation +
+                         self.turn_direction * self.turn_ratio / FPS) % 360
+
+        if random.randrange(100 * FPS) < 10:
+            self.turn_direction = random.choice((-1, 0, 1))
+            print("Turned tank")
+
+        if random.randrange(100 * FPS) < 20:
+            print("Swinging turret differently")
+            self.turret_turn_direction = random.choice(
+                (-1, -0.5, 0, 0, 0, 0.5, 1))
+
+        if random.randrange(100 * FPS) < 30:
+            print("Changing throttle")
+            self.throttle_mode = random.choice(
+                (-0.3, 0, 0.3, 0.6, 0.8, 1, 1, 1, 1, 1))
 
 class Game:
     def __init__(self, screen):
@@ -240,10 +277,7 @@ class Game:
                 print(event)
                 self.run = False
             elif event.type == SPAWN_BULLET_EVENT:
-                bullet = Bullet((random.randrange(0, GAME_SIZE[0]),
-                                 random.randrange(0, GAME_SIZE[1])),
-                                random.randrange(0, 360))
-                self.bullets.add(bullet)
+                self.bullets.add(Bullet(random_position(), random_angle()))
             else:
                 print(event)
 
