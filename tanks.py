@@ -218,10 +218,8 @@ class Game:
         a_tank = Tank(TEAM_1)
         self.tanks.append(a_tank)
 
-        b_tank = Tank(TEAM_2, (random.randrange(GAME_SIZE[0]),
-                               random.randrange(GAME_SIZE[1])),
-                      random.randrange(360))
-        self.tanks.append(b_tank)
+        for _ in range(3):
+            self.tanks.append(Tank(TEAM_2, random_position(), random_angle()))
 
         for block_rect in (
                 (300, 140, 30, 50),
