@@ -25,8 +25,6 @@ TURRET_SIZE = (20, 20)
 GUN_SIZE = (34, 4)
 FPS = 60
 
-SPAWN_BULLET_EVENT = pygame.USEREVENT + 1
-
 def darker_color(color):
     return (color[0] // 2, color[1] // 2, color[2] // 2)
 
@@ -39,6 +37,21 @@ def calc_sin_cos(angle):
     cos_angle = math.cos(angle / 360 * 2 * math.pi)
     return (sin_angle, cos_angle)
 
+def rotate_point(point, angle):
+    sin_angle, cos_angle = calc_sin_cos(angle)
+    rotated_x = point[0] * cos_angle - point[1] * sin_angle
+    rotated_y = -(point[0] * sin_angle + point[1] * cos_angle)
+
+    if abs(point[0] ** 2 + point[1] ** 2 -
+           rotated_x ** 2 - rotated_y ** 2) >= 0.001:
+        print("Angle", self.rotation)
+        print("In", point[0] ** 2 + point[1] ** 2)
+        print("Out", rotated_x ** 2 + rotated_y ** 2)
+        print(point)
+        print(rotated_x, rotated_y)
+        print(cos_angle, sin_angle)
+        assert False
+    return (rotated_x, rotated_y)
 
 def random_angle():
     return random.randrange(360)
@@ -62,14 +75,14 @@ class Block(pygame.sprite.Sprite):
     def __init__(self, position_and_size):
         pygame.sprite.Sprite.__init__(self)
 #        self.position_and_size = position_and_size
-        self.image = pygame.Surface(position_and_size.size)
+        # Without SRCALPHA, mask_from_surface won't do the right thing
+        # when presented with a solid filled area.
+        self.image = pygame.Surface(position_and_size.size, pygame.SRCALPHA)
         self.image.fill(BLOCK_COLOR)
         self.rect = position_and_size
 
-    # def draw(self, screen):
-    #      pygame.draw.rect(screen,
-    #                       BLOCK_COLOR,
-    #                       pygame.Rect(self.position_and_size))
+        # Needed for collision detection
+        self.mask = pygame.mask.from_surface(self.image)
 
 
 class Bullet(pygame.sprite.Sprite):
@@ -119,13 +132,34 @@ class Tank(pygame.sprite.Sprite):
         self.mask = pygame.mask.Mask((0, 0))
         self.rect = pygame.Rect((0, 0), (0, 0))
 
-    def draw(self, screen):
-        # # Hull
-        # pygame.draw.rect(screen,
-        #                  (0, 255, 0),
-        #                  pygame.Rect(self.pos, TANK_SIZE),
-        #                  2)
+        # Used to reset position after a collision
+        self.prev_pos = self.pos
+        self.prev_rotation = self.rotation
+        self.prev_turret_rotation = self.rotation
 
+        self.collided = False
+
+    def store_safe_position(self):
+        self.prev_rotation = self.rotation
+        self.prev_pos = self.pos
+        self.prev_turret_rotation = self.turret_rotation
+
+    def restore_safe_position(self):
+        self.pos = self.prev_pos
+        self.rotation = self.prev_rotation
+        self.turret_rotation = self.prev_turret_rotation
+        self.image = None
+        self.rect = None
+
+    def get_gun_position_and_angle(self):
+        gun_length = GUN_SIZE[0]
+        angle = self.turret_rotation + self.rotation
+        rel_gun_tip = rotate_point((gun_length, 0), angle)
+
+        return (self.pos[0] + rel_gun_tip[0],
+                self.pos[1] + rel_gun_tip[1]), angle
+
+    def update_image(self):
         # Tank
         max_radius = max(math.sqrt((TANK_SIZE[0] / 2) ** 2 +
                                    (TANK_SIZE[1] / 2) ** 2),
@@ -173,23 +207,49 @@ class Tank(pygame.sprite.Sprite):
             (tank_image_size[0] / 2 - turret_image_size[0] / 2,
              tank_image_size[1] / 2 - turret_image_size[1] / 2))
 
-        rotated_tank = rotate_square_surface(tank_image, self.rotation)
-        screen.blit(
-            rotated_tank,
-            (self.pos[0] - tank_image_size[0] / 2,
-             self.pos[1] - tank_image_size[1] / 2))
+        self.image = rotate_square_surface(tank_image, self.rotation)
 
         # For collision detection
         self.rect = pygame.Rect(
             (self.pos[0] - tank_image_size[0] / 2,
              self.pos[1] - tank_image_size[1] / 2),
-            rotated_tank.get_size())
+            self.image.get_size())
 
-        self.mask = pygame.mask.from_surface(rotated_tank)
+#        pygame.draw.rect(screen, (0, 255, 0), self.rect, 1)
+        self.mask = pygame.mask.from_surface(self.image)
+#        olist = self.mask.outline()
+#        pygame.draw.lines(screen, (200,150,150),
+#                          1, olist)
+#        print(olist)
+
+
+
+    def draw(self, screen):
+        if self.image is None:
+            self.update_image()
+        tank_image_size = self.image.get_size()
+        screen.blit(
+            self.image,
+            (self.pos[0] - tank_image_size[0] / 2,
+             self.pos[1] - tank_image_size[1] / 2))
+
+#        olist = self.mask.outline()
+#        pygame.draw.lines(screen, (200,150,150),
+#                          1, olist)
+#        print(olist)
+
     def update_position(self):
         sin_angle, cos_angle = calc_sin_cos(self.rotation)
         speed_x = cos_angle * self.max_speed * self.throttle_mode
         speed_y = -sin_angle * self.max_speed * self.throttle_mode
+
+        self.turret_rotation = (
+            self.turret_rotation +
+            self.turret_turn_direction * self.turret_turn_ratio / FPS) % 360
+        self.rotation = (self.rotation +
+                         self.turn_direction * self.turn_ratio / FPS) % 360
+        self.image = None  # Needs to be updated
+        self.rect = None
 
         self.pos = (self.pos[0] + speed_x / FPS,
                     self.pos[1] + speed_y / FPS)
@@ -225,38 +285,42 @@ class Tank(pygame.sprite.Sprite):
                 self.pos = (self.pos[0], GAME_SIZE[1] - rotated_corner[1])
 
     def ai(self):
-        self.turret_rotation = (
-            self.turret_rotation +
-            self.turret_turn_direction * self.turret_turn_ratio / FPS) % 360
-        self.rotation = (self.rotation +
-                         self.turn_direction * self.turn_ratio / FPS) % 360
-
-        if random.randrange(100 * FPS) < 10:
+        if self.collided or random.randrange(100 * FPS) < 10:
             self.turn_direction = random.choice((-1, 0, 1))
             print("Turned tank")
 
-        if random.randrange(100 * FPS) < 20:
+        if self.collided or random.randrange(100 * FPS) < 30:
             print("Swinging turret differently")
             self.turret_turn_direction = random.choice(
-                (-1, -0.5, 0, 0, 0, 0.5, 1))
+                (-1, -0.5, 0, 0, 0, 0, 0, 0, 0, 0.5, 1))
 
-        if random.randrange(100 * FPS) < 30:
+        if self.collided:
+            print("Dramatically changing throttle")
+            self.throttle_mode = random.choice((-0.3, 1))
+        elif random.randrange(100 * FPS) < 30:
             print("Changing throttle")
             self.throttle_mode = random.choice(
                 (-0.3, 0, 0.3, 0.6, 0.8, 1, 1, 1, 1, 1))
 
+
+        self.collided = False
+
+        fire_gun = random.randrange(100 * FPS) < 30
+
+        return fire_gun
+
 class Game:
     def __init__(self, screen):
         self.screen = screen
-        self.tanks = []
+        self.tanks = pygame.sprite.Group()
         self.blocks = pygame.sprite.Group()
         self.bullets = pygame.sprite.Group()
 
         a_tank = Tank(TEAM_1)
-        self.tanks.append(a_tank)
+        self.tanks.add(a_tank)
 
         for _ in range(3):
-            self.tanks.append(Tank(TEAM_2, random_position(), random_angle()))
+            self.tanks.add(Tank(TEAM_2, random_position(), random_angle()))
 
         for block_rect in (
                 (300, 140, 30, 50),
@@ -266,8 +330,6 @@ class Game:
         ):
             self.blocks.add(Block(pygame.Rect(block_rect)))
 
-        pygame.time.set_timer(SPAWN_BULLET_EVENT, 600)
-
         self.run = True
         self.clock = pygame.time.Clock()
 
@@ -276,14 +338,16 @@ class Game:
             if event.type == pygame.QUIT:
                 print(event)
                 self.run = False
-            elif event.type == SPAWN_BULLET_EVENT:
-                self.bullets.add(Bullet(random_position(), random_angle()))
             else:
                 print(event)
 
     def ai(self):
         for tank in self.tanks:
-            tank.ai()
+            shoot_gun = tank.ai()
+            if shoot_gun:
+                gun_pos, gun_angle = tank.get_gun_position_and_angle()
+                self.bullets.add(Bullet(gun_pos, gun_angle))
+
 
     def update_positions(self):
         for tank in self.tanks:
@@ -299,6 +363,7 @@ class Game:
 
         self.blocks.draw(self.screen)
         self.bullets.draw(self.screen)
+
         for tank in self.tanks:
             tank.draw(self.screen)
 
@@ -309,23 +374,64 @@ class Game:
                                    True)  # Bullets die
 
         for tank in self.tanks:
+            if tank.image is None:
+                tank.update_image()
+
+        for tank in self.tanks:
             bullets_hitting = pygame.sprite.spritecollide(
                 tank,
                 self.bullets,
                 True,  # Kill bullets that hit.
                 pygame.sprite.collide_mask)
-            for _ in bullets_hitting:
-                print("Poof")
+            if bullets_hitting:
+                for _ in bullets_hitting:
+                    print("Poof")
+                tank.kill()
+                continue
 
+            blocks_hit = pygame.sprite.spritecollide(
+                tank,
+                self.blocks,
+                False,  # Blocks survive
+                pygame.sprite.collide_mask)
+
+            if blocks_hit:
+                for block in blocks_hit:
+                    tank.restore_safe_position()
+                    tank.update_image()
+                    tank.collided = True
+                    assert not pygame.sprite.collide_mask(tank, block)
+    #                print("Ouch")
+            else:
+                tank.store_safe_position()
+
+            # Nice O(n^2) algorithm
+            for other_tank in self.tanks:
+                if other_tank is tank:
+                    continue
+                if pygame.sprite.collide_mask(tank, other_tank):
+#                    print("That will leave a dent")
+                    pass
 
     def mainloop(self):
         while self.run:
             self.handle_events()
             self.ai()
             self.update_positions()
-            self.handle_collisions()
             self.draw()
+            tanks_before_count = len(self.tanks)
+            self.handle_collisions()
+            if tanks_before_count > 1:
+                if len(self.tanks) <= 1:
+                    # No more tanks. Quit in 2 seconds.
+                    print("Out of tanks!")
+                    if len(self.tanks) == 1:
+                        print("Gz survivor")
+                    else:
+                        print("Draw")
+                    pygame.time.set_timer(pygame.QUIT, 2000)
             pygame.display.update()
+
             self.clock.tick(FPS)
 
 def main():
